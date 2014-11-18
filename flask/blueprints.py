@@ -102,6 +102,8 @@ class Blueprint(_PackageBoundObject):
         self.static_url_path = static_url_path
         self.deferred_functions = []
         self.view_functions = {}
+        self.blueprints = {}
+        self._blueprint_order = []
         if url_defaults is None:
             url_defaults = {}
         self.url_values_defaults = url_defaults
@@ -136,7 +138,20 @@ class Blueprint(_PackageBoundObject):
         Subclasses can override this to return a subclass of the setup state.
         """
         return BlueprintSetupState(self, app, options, first_registration)
-
+        
+    def register_blueprint(self, blueprint, **options):
+        if blueprint.name in self.blueprints:
+            assert self.blueprints[blueprint.name] is blueprint, \
+            'A blueprint\'s name collision occurred between %r and ' \
+            '%r. Both share the same name "%s". Blueprints that ' \
+            'are created on the fly need unique names.' % \
+            (blueprint, self.blueprints[blueprint.name], blueprint.name)
+        else:
+            self.blueprints[blueprint.name] = blueprint
+            self._blueprint_order.append(blueprint)
+            #Later modify it to have lazy loading
+            blueprint.register(self, options, first_registration)
+        
     def register(self, app, options, first_registration=False):
         """Called by :meth:`Flask.register_blueprint` to register a blueprint
         on the application.  This can be overridden to customize the register
@@ -168,8 +183,6 @@ class Blueprint(_PackageBoundObject):
         """Like :meth:`Flask.add_url_rule` but for a blueprint.  The endpoint for
         the :func:`url_for` function is prefixed with the name of the blueprint.
         """
-        if endpoint:
-            assert '.' not in endpoint, "Blueprint endpoints should not contain dots"
         self.record(lambda s:
             s.add_url_rule(rule, endpoint, view_func, **options))
 
