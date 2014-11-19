@@ -121,7 +121,7 @@ class Blueprint(_PackageBoundObject):
             return True
         if (not self.blueprints) and ('.' in endpoint):
             return False
-        blueprint_names = endpoint.split('.')
+        blueprint_names = endpoint.split('.')[:-1]
         for blueprint_name in blueprint_names:
             if blueprint_name not in self.blueprints:
                 return False
