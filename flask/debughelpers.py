@@ -113,8 +113,8 @@ def explain_template_loading_attempts(app, template, attempts):
     total_found = 0
     blueprint = None
     reqctx = _request_ctx_stack.top
-    if reqctx is not None and reqctx.request.blueprint is not None:
-        blueprint = reqctx.request.blueprint
+    if reqctx is not None and reqctx.request.leaf_blueprint is not None:
+        blueprint = reqctx.request.leaf_blueprint
 
     for idx, (loader, srcobj, triple) in enumerate(attempts):
         if isinstance(srcobj, Flask):

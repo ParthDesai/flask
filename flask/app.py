@@ -738,9 +738,11 @@ class Flask(_PackageBoundObject):
         funcs = self.template_context_processors[None]
         reqctx = _request_ctx_stack.top
         if reqctx is not None:
-            bp = reqctx.request.blueprint
-            if bp is not None and bp in self.template_context_processors:
-                funcs = chain(funcs, self.template_context_processors[bp])
+            bps = reqctx.request.blueprints
+            if bps is not None:
+                for bp in bps:
+                    if bp is not None and bp in self.template_context_processors:
+                        funcs = chain(funcs, self.template_context_processors[bp])
         orig_ctx = context.copy()
         for func in funcs:
             context.update(func())
@@ -1377,7 +1379,7 @@ class Flask(_PackageBoundObject):
 
         .. versionadded:: 0.3
         """
-        handlers = self.error_handler_spec.get(request.blueprint)
+        handlers = self.error_handler_spec.get(request.leaf_blueprint)
         # Proxy exceptions don't have error codes.  We want to always return
         # those unchanged as errors
         if e.code is None:
@@ -1429,7 +1431,7 @@ class Flask(_PackageBoundObject):
         # trap_http_exception method so that's their fault then.
 
         blueprint_handlers = ()
-        handlers = self.error_handler_spec.get(request.blueprint)
+        handlers = self.error_handler_spec.get(request.leaf_blueprint)
         if handlers is not None:
             blueprint_handlers = handlers.get(None, ())
         app_handlers = self.error_handler_spec[None].get(None, ())
@@ -1718,17 +1720,23 @@ class Flask(_PackageBoundObject):
         This also triggers the :meth:`url_value_processor` functions before
         the actual :meth:`before_request` functions are called.
         """
-        bp = _request_ctx_stack.top.request.blueprint
+        bps = _request_ctx_stack.top.request.blueprints
 
         funcs = self.url_value_preprocessors.get(None, ())
-        if bp is not None and bp in self.url_value_preprocessors:
-            funcs = chain(funcs, self.url_value_preprocessors[bp])
+        if bps is not None:
+            for bp in bps:
+                if bp is not None and bp in self.url_value_preprocessors:
+                    funcs = chain(funcs, self.url_value_preprocessors[bp])
+
         for func in funcs:
             func(request.endpoint, request.view_args)
 
         funcs = self.before_request_funcs.get(None, ())
-        if bp is not None and bp in self.before_request_funcs:
-            funcs = chain(funcs, self.before_request_funcs[bp])
+
+        for bp in bps:
+            if bp is not None and bp in self.before_request_funcs:
+                funcs = chain(funcs, self.before_request_funcs[bp])
+
         for func in funcs:
             rv = func()
             if rv is not None:
@@ -1748,10 +1756,11 @@ class Flask(_PackageBoundObject):
                  instance of :attr:`response_class`.
         """
         ctx = _request_ctx_stack.top
-        bp = ctx.request.blueprint
+        bps = ctx.request.blueprints
         funcs = ctx._after_request_functions
-        if bp is not None and bp in self.after_request_funcs:
-            funcs = chain(funcs, reversed(self.after_request_funcs[bp]))
+        for bp in bps:
+            if bp is not None and bp in self.after_request_funcs:
+                funcs = chain(funcs, reversed(self.after_request_funcs[bp]))
         if None in self.after_request_funcs:
             funcs = chain(funcs, reversed(self.after_request_funcs[None]))
         for handler in funcs:
@@ -1774,9 +1783,10 @@ class Flask(_PackageBoundObject):
         if exc is None:
             exc = sys.exc_info()[1]
         funcs = reversed(self.teardown_request_funcs.get(None, ()))
-        bp = _request_ctx_stack.top.request.blueprint
-        if bp is not None and bp in self.teardown_request_funcs:
-            funcs = chain(funcs, reversed(self.teardown_request_funcs[bp]))
+        bps = _request_ctx_stack.top.request.blueprints
+        for bp in bps:
+            if bp is not None and bp in self.teardown_request_funcs:
+                funcs = chain(funcs, reversed(self.teardown_request_funcs[bp]))
         for func in funcs:
             func(exc)
         request_tearing_down.send(self, exc=exc)

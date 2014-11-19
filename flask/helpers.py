@@ -267,13 +267,15 @@ def url_for(endpoint, **values):
     # features that support "relative" URLs.
     if reqctx is not None:
         url_adapter = reqctx.url_adapter
-        blueprint_name = request.blueprint
+        blueprint_names = request.blueprints[::-1]
+        print 'axcvbnm', blueprint_names, request.endpoint, request.blueprints
         if not reqctx.request._is_old_module:
             if endpoint[:1] == '.':
-                if blueprint_name is not None:
-                    endpoint = blueprint_name + endpoint
-                else:
-                    endpoint = endpoint[1:]
+                endpoint = endpoint[1:]
+                for blueprint_name in blueprint_names:
+                    if blueprint_name is not None:
+                        endpoint = blueprint_name + '.' + endpoint
+
         else:
             # TODO: get rid of this deprecated functionality in 1.0
             if '.' not in endpoint:

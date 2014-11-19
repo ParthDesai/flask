@@ -21,7 +21,7 @@ class BlueprintSetupState(object):
     to all register callback functions.
     """
 
-    def __init__(self, blueprint, app, options, first_registration):
+    def __init__(self, blueprint, app, options, first_registration, parent_blueprint):
         #: a reference to the current application
         self.app = app
 
@@ -31,6 +31,9 @@ class BlueprintSetupState(object):
         #: a dictionary with all options that were passed to the
         #: :meth:`~flask.Flask.register_blueprint` method.
         self.options = options
+
+        #parent blueprint in recursive setup
+        self.parent_blueprint = parent_blueprint
 
         #: as blueprints can be registered multiple times with the
         #: application and not everything wants to be registered
@@ -72,7 +75,12 @@ class BlueprintSetupState(object):
         defaults = self.url_defaults
         if 'defaults' in options:
             defaults = dict(defaults, **options.pop('defaults'))
-        self.app.add_url_rule(rule, '%s.%s' % (self.blueprint.name, endpoint),
+
+        if self.parent_blueprint is None:
+            self.app.add_url_rule(rule, '%s.%s' % (self.blueprint.name, endpoint),
+                              view_func, defaults=defaults, **options)
+        else:
+            self.parent_blueprint.add_url_rule(rule, '%s.%s' % (self.blueprint.name, endpoint),
                               view_func, defaults=defaults, **options)
 
 
@@ -108,6 +116,17 @@ class Blueprint(_PackageBoundObject):
             url_defaults = {}
         self.url_values_defaults = url_defaults
 
+    def is_valid_endpoint(self, endpoint):
+        if '.' not in endpoint:
+            return True
+        if (not self.blueprints) and ('.' in endpoint):
+            return False
+        blueprint_names = endpoint.split('.')
+        for blueprint_name in blueprint_names:
+            if blueprint_name not in self.blueprints:
+                return False
+
+
     def record(self, func):
         """Registers a function that is called when the blueprint is
         registered on the application.  This function is called with the
@@ -132,12 +151,12 @@ class Blueprint(_PackageBoundObject):
                 func(state)
         return self.record(update_wrapper(wrapper, func))
 
-    def make_setup_state(self, app, options, first_registration=False):
+    def make_setup_state(self, app, options, first_registration=False, parent_blueprint=None):
         """Creates an instance of :meth:`~flask.blueprints.BlueprintSetupState`
         object that is later passed to the register callback functions.
         Subclasses can override this to return a subclass of the setup state.
         """
-        return BlueprintSetupState(self, app, options, first_registration)
+        return BlueprintSetupState(self, app, options, first_registration, parent_blueprint)
         
     def register_blueprint(self, blueprint, **options):
         if blueprint.name in self.blueprints:
@@ -147,12 +166,10 @@ class Blueprint(_PackageBoundObject):
             'are created on the fly need unique names.' % \
             (blueprint, self.blueprints[blueprint.name], blueprint.name)
         else:
-            self.blueprints[blueprint.name] = blueprint
+            self.blueprints[blueprint.name] = [blueprint, options]
             self._blueprint_order.append(blueprint)
-            #Later modify it to have lazy loading
-            blueprint.register(self, options, first_registration)
         
-    def register(self, app, options, first_registration=False):
+    def register(self, app, options, first_registration=False, parent_blueprint=None):
         """Called by :meth:`Flask.register_blueprint` to register a blueprint
         on the application.  This can be overridden to customize the register
         behavior.  Keyword arguments from
@@ -160,7 +177,11 @@ class Blueprint(_PackageBoundObject):
         method in the `options` dictionary.
         """
         self._got_registered_once = True
-        state = self.make_setup_state(app, options, first_registration)
+
+        for blueprint in self.blueprints:
+            blueprint[0].register(app, options, first_registration, self)
+
+        state = self.make_setup_state(app, options, first_registration, parent_blueprint)
         if self.has_static_folder:
             state.add_url_rule(self.static_url_path + '/<path:filename>',
                                view_func=self.send_static_file,
@@ -183,6 +204,8 @@ class Blueprint(_PackageBoundObject):
         """Like :meth:`Flask.add_url_rule` but for a blueprint.  The endpoint for
         the :func:`url_for` function is prefixed with the name of the blueprint.
         """
+        if not self.is_valid_endpoint(endpoint):
+            raise AssertionError("Blueprint endpoint is invalid or should not contain dots")
         self.record(lambda s:
             s.add_url_rule(rule, endpoint, view_func, **options))
 

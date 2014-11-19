@@ -78,7 +78,7 @@ class Request(RequestBase):
             return self.url_rule.endpoint
 
     @property
-    def module(self):
+    def modules(self):
         """The name of the current module if the request was dispatched
         to an actual module.  This is deprecated functionality, use blueprints
         instead.
@@ -88,13 +88,21 @@ class Request(RequestBase):
                                 'blueprints.  Use request.blueprint '
                                 'instead.'), stacklevel=2)
         if self._is_old_module:
-            return self.blueprint
+            return self.blueprints
 
     @property
-    def blueprint(self):
+    def blueprints(self):
         """The name of the current blueprint"""
         if self.url_rule and '.' in self.url_rule.endpoint:
-            return self.url_rule.endpoint.rsplit('.', 1)[0]
+            return self.url_rule.endpoint.split('.')[:-1]
+        else:
+            return []
+
+    @property
+    def leaf_blueprint(self):
+        """The name of top level blueprint"""
+        if self.url_rule and '.' in self.url_rule.endpoint:
+            return self.url_rule.endpoint.rsplit('.')[-2]
 
     @property
     def json(self):
