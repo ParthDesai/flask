@@ -17,6 +17,106 @@ from flask._compat import text_type
 from werkzeug.http import parse_cache_control_header
 from jinja2 import TemplateNotFound
 
+def test_recursive_blueprint_error_handling():
+    frontend = flask.Blueprint('frontend', __name__)
+    frontend_child = flask.Blueprint('frontend-child', __name__, url_prefix='/frontend_c')
+    frontend_child_child = flask.Blueprint('frontend-child-child', __name__, url_prefix='/frontend_c')
+
+    frontend.register_blueprint(frontend_child)
+    frontend_child.register_blueprint(frontend_child_child)
+
+    @frontend.errorhandler(403)
+    def frontend_forbidden(e):
+        return 'frontend says no', 403
+
+    @frontend.route('/frontend-no')
+    def frontend_no():
+        flask.abort(403)
+
+    @frontend_child.errorhandler(403)
+    def backend_forbidden(e):
+        return 'frontend-child says no', 403
+
+    @frontend_child.route('/frontend-child-no')
+    def backend_no():
+        flask.abort(403)
+
+    @frontend_child_child.route('/frontend-child-child-no')
+    def another():
+        flask.abort(403)
+
+    app = flask.Flask(__name__)
+
+    @app.errorhandler(403)
+    def apperror(e):
+        return 'app itself says no', 403
+
+    app.register_blueprint(frontend)
+
+
+    c = app.test_client()
+
+    assert c.get('/frontend_c/frontend_c/frontend-child-child-no').data == b'app itself says no'
+    assert c.get('/frontend_c/frontend-child-no').data == b'frontend-child says no'
+    assert c.get('/frontend-no').data == b'frontend says no'
+
+def test_recursive_blueprint_request_handling():
+    frontend = flask.Blueprint('frontend', __name__)
+    frontend_child = flask.Blueprint('frontend-child', __name__, url_prefix='/frontend_c')
+    frontend_child_child = flask.Blueprint('frontend-child-child', __name__, url_prefix='/frontend_c')
+    evts = []
+
+    frontend.register_blueprint(frontend_child)
+    frontend_child.register_blueprint(frontend_child_child)
+
+    @frontend_child_child.route('/frontend-child-child-no')
+    def another():
+        evts.append('frontend-child-child-no')
+        return 'Hello'
+
+    @frontend.before_request
+    def frontend_before_request():
+        evts.append('before frontend')
+
+
+    @frontend_child.before_request
+    def frontend_child_before_request():
+        evts.append('before frontend_child')
+
+    @frontend_child_child.before_request
+    def frontend_child_child_before_request():
+        evts.append('before frontend_child_child')
+
+    @frontend.after_request
+    def frontend_after_request(e):
+        evts.append('after frontend')
+        return e
+
+    @frontend_child_child.after_request
+    def frontend_child_child_after_request(e):
+        evts.append('after frontend_child_child')
+        return e
+
+
+    @frontend_child.after_request
+    def frontend_child_after_request(e):
+        evts.append('after frontend_child')
+        return e
+
+    app = flask.Flask(__name__)
+
+    @app.errorhandler(403)
+    def apperror(e):
+        return 'app itself says no', 403
+
+    app.register_blueprint(frontend)
+
+    c = app.test_client()
+
+    c.get('/frontend_c/frontend_c/frontend-child-child-no')  
+
+    assert evts == ['before frontend', 'before frontend_child', 'before frontend_child_child', 'frontend-child-child-no', 'after frontend_child_child', 'after frontend_child', 'after frontend']
+
 
 def test_blueprint_specific_error_handling():
     frontend = flask.Blueprint('frontend', __name__)

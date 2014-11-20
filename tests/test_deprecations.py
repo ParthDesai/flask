@@ -40,7 +40,7 @@ class TestRequestDeprecation(object):
 
         @app.route('/')
         def index():
-            assert flask.request.module is None
+            assert flask.request.modules is None
             return 'OK'
 
         with catch_deprecation_warnings() as captured:

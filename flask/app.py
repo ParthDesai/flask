@@ -739,10 +739,11 @@ class Flask(_PackageBoundObject):
         reqctx = _request_ctx_stack.top
         if reqctx is not None:
             bps = reqctx.request.blueprints
+            temp_ctx_proc = self.template_context_processors
             if bps is not None:
                 for bp in bps:
-                    if bp is not None and bp in self.template_context_processors:
-                        funcs = chain(funcs, self.template_context_processors[bp])
+                    if bp is not None and bp in temp_ctx_proc:
+                        funcs = chain(funcs, temp_ctx_proc[bp])
         orig_ctx = context.copy()
         for func in funcs:
             context.update(func())
@@ -930,12 +931,19 @@ class Flask(_PackageBoundObject):
             first_registration = True
         blueprint.register(self, options, first_registration)
 
+    def __iter_blueprint_recursive(self, blueprints):
+        for blueprint in blueprints:
+            yield blueprint
+            self.__iter_blueprint_recursive(blueprint.blueprints)
+
+
     def iter_blueprints(self):
         """Iterates over all blueprints by the order they were registered.
 
         .. versionadded:: 1.0
         """
-        return iter(self._blueprint_order)
+
+        return self.__iter_blueprint_recursive(self._blueprint_order)
 
     @setupmethod
     def add_url_rule(self, rule, endpoint=None, view_func=None, **options):
@@ -1721,21 +1729,23 @@ class Flask(_PackageBoundObject):
         the actual :meth:`before_request` functions are called.
         """
         bps = _request_ctx_stack.top.request.blueprints
+        url_val_preproc = self.url_value_preprocessors
 
         funcs = self.url_value_preprocessors.get(None, ())
         if bps is not None:
             for bp in bps:
-                if bp is not None and bp in self.url_value_preprocessors:
-                    funcs = chain(funcs, self.url_value_preprocessors[bp])
+                if bp is not None and bp in url_val_preproc:
+                    funcs = chain(funcs, url_val_preproc[bp])
 
         for func in funcs:
             func(request.endpoint, request.view_args)
 
         funcs = self.before_request_funcs.get(None, ())
+        bef_req_funcs = self.before_request_funcs
 
         for bp in bps:
-            if bp is not None and bp in self.before_request_funcs:
-                funcs = chain(funcs, self.before_request_funcs[bp])
+            if bp is not None and bp in bef_req_funcs:
+                funcs = chain(funcs, bef_req_funcs[bp])
 
         for func in funcs:
             rv = func()
@@ -1756,13 +1766,14 @@ class Flask(_PackageBoundObject):
                  instance of :attr:`response_class`.
         """
         ctx = _request_ctx_stack.top
-        bps = ctx.request.blueprints
+        bps = reversed(ctx.request.blueprints)
         funcs = ctx._after_request_functions
+        aft_req_funcs = self.after_request_funcs
         for bp in bps:
-            if bp is not None and bp in self.after_request_funcs:
-                funcs = chain(funcs, reversed(self.after_request_funcs[bp]))
-        if None in self.after_request_funcs:
-            funcs = chain(funcs, reversed(self.after_request_funcs[None]))
+            if bp is not None and bp in aft_req_funcs:
+                funcs = chain(funcs, reversed(aft_req_funcs[bp]))
+        if None in aft_req_funcs:
+            funcs = chain(funcs, reversed(aft_req_funcs[None]))
         for handler in funcs:
             response = handler(response)
         if not self.session_interface.is_null_session(ctx.session):
@@ -1783,10 +1794,11 @@ class Flask(_PackageBoundObject):
         if exc is None:
             exc = sys.exc_info()[1]
         funcs = reversed(self.teardown_request_funcs.get(None, ()))
-        bps = _request_ctx_stack.top.request.blueprints
+        bps = reversed(_request_ctx_stack.top.request.blueprints)
+        td_req_funcs = self.teardown_request_funcs
         for bp in bps:
-            if bp is not None and bp in self.teardown_request_funcs:
-                funcs = chain(funcs, reversed(self.teardown_request_funcs[bp]))
+            if bp is not None and bp in td_req_funcs:
+                funcs = chain(funcs, reversed(td_req_funcs[bp]))
         for func in funcs:
             func(exc)
         request_tearing_down.send(self, exc=exc)

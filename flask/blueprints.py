@@ -111,7 +111,7 @@ class Blueprint(_PackageBoundObject):
         self.deferred_functions = []
         self.view_functions = {}
         self.blueprints = {}
-        self._blueprint_order = []
+        self.child_url_prefixes = set()
         if url_defaults is None:
             url_defaults = {}
         self.url_values_defaults = url_defaults
@@ -122,9 +122,13 @@ class Blueprint(_PackageBoundObject):
         if (not self.blueprints) and ('.' in endpoint):
             return False
         blueprint_names = endpoint.split('.')[:-1]
+        current_blueprint_dict = self.blueprints
         for blueprint_name in blueprint_names:
-            if blueprint_name not in self.blueprints:
+            if blueprint_name not in current_blueprint_dict:
                 return False
+            else:
+                current_blueprint_dict = current_blueprint_dict[blueprint_name][0].blueprints
+        return True
 
 
     def record(self, func):
@@ -159,6 +163,17 @@ class Blueprint(_PackageBoundObject):
         return BlueprintSetupState(self, app, options, first_registration, parent_blueprint)
         
     def register_blueprint(self, blueprint, **options):
+        if blueprint.url_prefix is None:
+            raise AssertionError('Blueprint that are registered recursively must have url prefix')
+
+        if blueprint.url_prefix in self.child_url_prefixes:
+            raise AssertionError('A blueprint\'s url prefix collision occurred.' \
+            'url prefix "%s" is already registered. Blueprints that ' \
+            'are created on the fly need unique url prefix.' % \
+            (blueprint.url_prefix))
+        else:
+            self.child_url_prefixes.add(blueprint.url_prefix)
+
         if blueprint.name in self.blueprints:
             assert self.blueprints[blueprint.name] is blueprint, \
             'A blueprint\'s name collision occurred between %r and ' \
@@ -167,7 +182,6 @@ class Blueprint(_PackageBoundObject):
             (blueprint, self.blueprints[blueprint.name], blueprint.name)
         else:
             self.blueprints[blueprint.name] = [blueprint, options]
-            self._blueprint_order.append(blueprint)
         
     def register(self, app, options, first_registration=False, parent_blueprint=None):
         """Called by :meth:`Flask.register_blueprint` to register a blueprint
@@ -179,7 +193,7 @@ class Blueprint(_PackageBoundObject):
         self._got_registered_once = True
 
         for blueprint in self.blueprints:
-            blueprint[0].register(app, options, first_registration, self)
+            self.blueprints[blueprint][0].register(app, self.blueprints[blueprint][1], first_registration, self)
 
         state = self.make_setup_state(app, options, first_registration, parent_blueprint)
         if self.has_static_folder:
@@ -205,7 +219,12 @@ class Blueprint(_PackageBoundObject):
         the :func:`url_for` function is prefixed with the name of the blueprint.
         """
         if not self.is_valid_endpoint(endpoint):
-            raise AssertionError("Blueprint endpoint is invalid or should not contain dots")
+            raise AssertionError('Blueprint endpoint "%s" is invalid or should not contain dots' % (endpoint))
+        if rule in self.child_url_prefixes:
+            raise AssertionError('Rule "%s" you are trying to register is colliding with ' \
+                'already registerd url prefix' % (rule))
+        else:
+            self.child_url_prefixes.add(rule)
         self.record(lambda s:
             s.add_url_rule(rule, endpoint, view_func, **options))
 
