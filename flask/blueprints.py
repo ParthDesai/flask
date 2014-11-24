@@ -123,47 +123,6 @@ class Blueprint(_PackageBoundObject):
             url_defaults = {}
         self.url_values_defaults = url_defaults
 
-    """def is_valid_endpoint_rule_combination(self, child_blueprint_url_prefixes, child_blueprint_names, rule, endpoint):
-        if (not self.blueprints_url_prefixes) and child_blueprint_url_prefixes:
-            return False
-        if (not self.blueprints) and child_blueprint_names:
-            return False
-        if len(child_blueprint_url_prefixes) != len(child_blueprint_names):
-            return False
-
-
-        current_blueprint_dict = self.blueprints
-        current_url_prefixes = self.blueprints_url_prefixes
-        current_blueprint = [self]
-        endpoint_rule_components = map(lambda x, y: (x, y), child_blueprint_names, child_blueprint_url_prefixes)
-
-        for endpoint_rule_component in endpoint_rule_components:
-
-            if (current_blueprint_dict is None) or \
-            (current_url_prefixes is None):
-                return False
-
-            if (endpoint_rule_component[0] not in current_blueprint_dict) or \
-            (endpoint_rule_component[1] not in current_url_prefixes):
-                return False
-            else:
-                current_blueprint = current_blueprint_dict[blueprint_name]
-
-                if current_blueprint is None:
-                    return False
-
-                current_blueprint_dict = current_blueprint[0].blueprints
-                current_url_prefixes = current_blueprint[0].blueprints_url_prefixes
-
-        if current_blueprint[0] is self:
-            if((endpoint in current_blueprint[0].endpoints) or (endpoint in current_blueprint[0].blueprints) or \
-                (rule in current_blueprint[0].rules) or (rule in current_blueprint[0].blueprints_url_prefixes)):
-                return False
-        else:
-            if((endpoint not in current_blueprint[0].endpoints) or (rule not in current_blueprint[0].rules)):
-                return False
-        return True """
-
     def is_valid_endpoint_rule_combination(self, rule, endpoint):
 
         if (not self.blueprints) and ('.' in endpoint):
