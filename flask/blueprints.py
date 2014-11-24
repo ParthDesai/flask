@@ -77,6 +77,7 @@ class BlueprintSetupState(object):
             defaults = dict(defaults, **options.pop('defaults'))
 
         if self.parent_blueprint is None:
+            options.pop('should_validate', None)
             self.app.add_url_rule(rule, '%s.%s' % (self.blueprint.name, endpoint),
                               view_func, defaults=defaults, **options)
         else:
@@ -110,24 +111,118 @@ class Blueprint(_PackageBoundObject):
         self.static_url_path = static_url_path
         self.deferred_functions = []
         self.view_functions = {}
+
         self.blueprints = {}
-        self.child_url_prefixes = set()
+        self.endpoints = set()
+
+        self.blueprints_url_prefixes = set()
+        self.rules = set()
+        self.rule_first_components = set()
+
         if url_defaults is None:
             url_defaults = {}
         self.url_values_defaults = url_defaults
 
-    def is_valid_endpoint(self, endpoint):
-        if '.' not in endpoint:
-            return True
-        if (not self.blueprints) and ('.' in endpoint):
+    """def is_valid_endpoint_rule_combination(self, child_blueprint_url_prefixes, child_blueprint_names, rule, endpoint):
+        if (not self.blueprints_url_prefixes) and child_blueprint_url_prefixes:
             return False
-        blueprint_names = endpoint.split('.')[:-1]
+        if (not self.blueprints) and child_blueprint_names:
+            return False
+        if len(child_blueprint_url_prefixes) != len(child_blueprint_names):
+            return False
+
+
         current_blueprint_dict = self.blueprints
-        for blueprint_name in blueprint_names:
-            if blueprint_name not in current_blueprint_dict:
+        current_url_prefixes = self.blueprints_url_prefixes
+        current_blueprint = [self]
+        endpoint_rule_components = map(lambda x, y: (x, y), child_blueprint_names, child_blueprint_url_prefixes)
+
+        for endpoint_rule_component in endpoint_rule_components:
+
+            if (current_blueprint_dict is None) or \
+            (current_url_prefixes is None):
+                return False
+
+            if (endpoint_rule_component[0] not in current_blueprint_dict) or \
+            (endpoint_rule_component[1] not in current_url_prefixes):
                 return False
             else:
-                current_blueprint_dict = current_blueprint_dict[blueprint_name][0].blueprints
+                current_blueprint = current_blueprint_dict[blueprint_name]
+
+                if current_blueprint is None:
+                    return False
+
+                current_blueprint_dict = current_blueprint[0].blueprints
+                current_url_prefixes = current_blueprint[0].blueprints_url_prefixes
+
+        if current_blueprint[0] is self:
+            if((endpoint in current_blueprint[0].endpoints) or (endpoint in current_blueprint[0].blueprints) or \
+                (rule in current_blueprint[0].rules) or (rule in current_blueprint[0].blueprints_url_prefixes)):
+                return False
+        else:
+            if((endpoint not in current_blueprint[0].endpoints) or (rule not in current_blueprint[0].rules)):
+                return False
+        return True """
+
+    def is_valid_endpoint_rule_combination(self, rule, endpoint):
+
+        if (not self.blueprints) and ('.' in endpoint):
+            return False
+
+        rule = rule.strip('/')
+        endpoint = endpoint.strip('.')
+
+        current_blueprint_dict = self.blueprints
+        current_url_prefixes = self.blueprints_url_prefixes
+        current_rules = self.rules
+        current_blueprint = [self]
+
+        last_endpoint = endpoint.split('.')[-1]
+
+        if last_endpoint is endpoint:
+            endpoint = None
+        else:
+            endpoint = endpoint.split('.')[:-1]
+        
+        while endpoint:
+
+            if not rule:
+                return False
+
+            if (current_blueprint_dict is None) or \
+            (current_url_prefixes is None):
+                return False
+
+            if endpoint[0] not in current_blueprint_dict:
+                return False
+            else:
+                current_blueprint = current_blueprint_dict[endpoint[0]]
+
+                if current_blueprint is None:
+                    return False
+
+                if rule in current_rules:
+                    rule = None
+                elif rule.split('/')[0] in current_url_prefixes:
+                    rule = '/'.join(rule.split('/')[1:])
+                else:
+                    return False
+
+                current_blueprint_dict = current_blueprint[0].blueprints
+                current_url_prefixes = current_blueprint[0].blueprints_url_prefixes
+                current_rules = current_blueprint[0].rules
+
+                endpoint = endpoint[1:]
+
+        if current_blueprint[0] is self:
+            if((last_endpoint in current_blueprint[0].blueprints) or \
+                (rule in current_blueprint[0].rules) or (rule in current_blueprint[0].blueprints_url_prefixes)):
+                return False
+        else:
+            if last_endpoint not in current_blueprint[0].endpoints:
+                return False
+            if (rule is None) or (rule not in current_blueprint[0].rules):
+                return False
         return True
 
 
@@ -163,16 +258,18 @@ class Blueprint(_PackageBoundObject):
         return BlueprintSetupState(self, app, options, first_registration, parent_blueprint)
         
     def register_blueprint(self, blueprint, **options):
+        """Like :meth:`Flask.register_blueprint` but for a blueprint."""
         if blueprint.url_prefix is None:
             raise AssertionError('Blueprint that are registered recursively must have url prefix')
 
-        if blueprint.url_prefix in self.child_url_prefixes:
+        if (blueprint.url_prefix.strip('/') in self.blueprints_url_prefixes) or (blueprint.url_prefix.strip('/') in self.rules) \
+        or (blueprint.url_prefix.strip('/') in self.rule_first_components):
             raise AssertionError('A blueprint\'s url prefix collision occurred.' \
             'url prefix "%s" is already registered. Blueprints that ' \
             'are created on the fly need unique url prefix.' % \
             (blueprint.url_prefix))
         else:
-            self.child_url_prefixes.add(blueprint.url_prefix)
+            self.blueprints_url_prefixes.add(blueprint.url_prefix.strip('/'))
 
         if blueprint.name in self.blueprints:
             assert self.blueprints[blueprint.name] is blueprint, \
@@ -209,7 +306,7 @@ class Blueprint(_PackageBoundObject):
         :func:`url_for` function is prefixed with the name of the blueprint.
         """
         def decorator(f):
-            endpoint = options.pop("endpoint", f.__name__)
+            endpoint = options.pop('endpoint', f.__name__)
             self.add_url_rule(rule, endpoint, f, **options)
             return f
         return decorator
@@ -218,13 +315,23 @@ class Blueprint(_PackageBoundObject):
         """Like :meth:`Flask.add_url_rule` but for a blueprint.  The endpoint for
         the :func:`url_for` function is prefixed with the name of the blueprint.
         """
-        if not self.is_valid_endpoint(endpoint):
-            raise AssertionError('Blueprint endpoint "%s" is invalid or should not contain dots' % (endpoint))
-        if rule in self.child_url_prefixes:
-            raise AssertionError('Rule "%s" you are trying to register is colliding with ' \
-                'already registerd url prefix' % (rule))
-        else:
-            self.child_url_prefixes.add(rule)
+
+        should_validate = options.get('should_validate', True) 
+
+        is_rule_for_child_blueprints = (len(endpoint.strip('.').split('.')) != 1)
+
+
+        if should_validate:
+            if not self.is_valid_endpoint_rule_combination(rule, endpoint):
+                raise AssertionError('Blueprint endpoint "%s" is invalid or should not contain dots' % (endpoint))
+        
+        if not is_rule_for_child_blueprints:
+            self.rules.add(rule.strip('/'))
+        if (not is_rule_for_child_blueprints) and (endpoint is not None):
+            self.endpoints.add(endpoint.strip('.'))
+
+        self.rule_first_components.add(rule.strip('/').split('/')[0])
+
         self.record(lambda s:
             s.add_url_rule(rule, endpoint, view_func, **options))
 

@@ -115,7 +115,43 @@ def test_recursive_blueprint_request_handling():
 
     c.get('/frontend_c/frontend_c/frontend-child-child-no')  
 
-    assert evts == ['before frontend', 'before frontend_child', 'before frontend_child_child', 'frontend-child-child-no', 'after frontend_child_child', 'after frontend_child', 'after frontend']
+    assert evts == ['before frontend', 'before frontend_child', 'before frontend_child_child', 
+    'frontend-child-child-no', 'after frontend_child_child', 'after frontend_child', 'after frontend']
+
+def test_blueprint_invalid_endpoint():
+    frontend = flask.Blueprint('frontend', __name__)
+    frontend_child = flask.Blueprint('frontend-child', __name__, url_prefix='/frontend_c')
+    frontend_child_child = flask.Blueprint('frontend-child-child', __name__, url_prefix='/frontend_c')
+    illegal_child = flask.Blueprint('frontend', __name__, url_prefix='/frontend_c')
+
+    frontend_child.register_blueprint(frontend_child_child)
+    frontend.register_blueprint(frontend_child)
+
+    try:
+        @frontend.route('/frontend_c')
+        def unknown():
+            pass
+    except AssertionError as e:
+        pass
+    else:
+        assert 0, 'expected AssertionError'
+
+    try:
+        frontend.register_blueprint(illegal_child)
+    except AssertionError as e:
+        pass
+    else:
+        assert 0, 'expected AssertionError'
+
+    try:
+        @frontend.route('/frontend', endpoint='frontend-child')
+        def unknown2():
+            pass
+    except AssertionError as e:
+        pass
+    else:
+        assert 0, 'expected AssertionError'
+
 
 
 def test_blueprint_specific_error_handling():
@@ -363,6 +399,9 @@ def test_empty_url_defaults():
     @bp.route('/', defaults={'page': 1})
     @bp.route('/page/<int:page>')
     def something(page):
+        return str(page)
+
+    def some2(page):
         return str(page)
 
     app = flask.Flask(__name__)

@@ -742,7 +742,7 @@ class Flask(_PackageBoundObject):
             temp_ctx_proc = self.template_context_processors
             if bps is not None:
                 for bp in bps:
-                    if bp is not None and bp in temp_ctx_proc:
+                    if bp in temp_ctx_proc:
                         funcs = chain(funcs, temp_ctx_proc[bp])
         orig_ctx = context.copy()
         for func in funcs:
@@ -937,13 +937,15 @@ class Flask(_PackageBoundObject):
             self.__iter_blueprint_recursive(blueprint.blueprints)
 
 
-    def iter_blueprints(self):
+    def iter_blueprints(self, iterate_over_child=True):
         """Iterates over all blueprints by the order they were registered.
 
         .. versionadded:: 1.0
         """
-
-        return self.__iter_blueprint_recursive(self._blueprint_order)
+        if iterate_over_child:
+            return self.__iter_blueprint_recursive(self._blueprint_order)
+        else:
+            return iter(self._blueprint_order)
 
     @setupmethod
     def add_url_rule(self, rule, endpoint=None, view_func=None, **options):
@@ -1734,7 +1736,7 @@ class Flask(_PackageBoundObject):
         funcs = self.url_value_preprocessors.get(None, ())
         if bps is not None:
             for bp in bps:
-                if bp is not None and bp in url_val_preproc:
+                if bp in url_val_preproc:
                     funcs = chain(funcs, url_val_preproc[bp])
 
         for func in funcs:
@@ -1744,7 +1746,7 @@ class Flask(_PackageBoundObject):
         bef_req_funcs = self.before_request_funcs
 
         for bp in bps:
-            if bp is not None and bp in bef_req_funcs:
+            if bp in bef_req_funcs:
                 funcs = chain(funcs, bef_req_funcs[bp])
 
         for func in funcs:
@@ -1770,7 +1772,7 @@ class Flask(_PackageBoundObject):
         funcs = ctx._after_request_functions
         aft_req_funcs = self.after_request_funcs
         for bp in bps:
-            if bp is not None and bp in aft_req_funcs:
+            if bp in aft_req_funcs:
                 funcs = chain(funcs, reversed(aft_req_funcs[bp]))
         if None in aft_req_funcs:
             funcs = chain(funcs, reversed(aft_req_funcs[None]))
@@ -1797,7 +1799,7 @@ class Flask(_PackageBoundObject):
         bps = reversed(_request_ctx_stack.top.request.blueprints)
         td_req_funcs = self.teardown_request_funcs
         for bp in bps:
-            if bp is not None and bp in td_req_funcs:
+            if bp in td_req_funcs:
                 funcs = chain(funcs, reversed(td_req_funcs[bp]))
         for func in funcs:
             func(exc)
