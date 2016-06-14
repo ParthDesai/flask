@@ -6,7 +6,7 @@
     Blueprints are the recommended way to implement larger or more
     pluggable applications in Flask 0.7 and later.
 
-    :copyright: (c) 2014 by Armin Ronacher.
+    :copyright: (c) 2015 by Armin Ronacher.
     :license: BSD, see LICENSE for more details.
 """
 from functools import update_wrapper
@@ -110,6 +110,7 @@ class Blueprint(_PackageBoundObject):
         self.static_folder = static_folder
         self.static_url_path = static_url_path
         self.deferred_functions = []
+
         self.view_functions = {}
 
         self.blueprints = {}
@@ -142,7 +143,7 @@ class Blueprint(_PackageBoundObject):
             endpoint = None
         else:
             endpoint = endpoint.split('.')[:-1]
-        
+
         while endpoint:
 
             if not rule:
@@ -215,7 +216,7 @@ class Blueprint(_PackageBoundObject):
         Subclasses can override this to return a subclass of the setup state.
         """
         return BlueprintSetupState(self, app, options, first_registration, parent_blueprint)
-        
+
     def register_blueprint(self, blueprint, **options):
         """Like :meth:`Flask.register_blueprint` but for a blueprint."""
         if blueprint.url_prefix is None:
@@ -238,7 +239,7 @@ class Blueprint(_PackageBoundObject):
             (blueprint, self.blueprints[blueprint.name], blueprint.name)
         else:
             self.blueprints[blueprint.name] = [blueprint, options]
-        
+
     def register(self, app, options, first_registration=False, parent_blueprint=None):
         """Called by :meth:`Flask.register_blueprint` to register a blueprint
         on the application.  This can be overridden to customize the register
@@ -275,7 +276,7 @@ class Blueprint(_PackageBoundObject):
         the :func:`url_for` function is prefixed with the name of the blueprint.
         """
 
-        should_validate = options.get('should_validate', True) 
+        should_validate = options.get('should_validate', True)
 
         is_rule_for_child_blueprints = (len(endpoint.strip('.').split('.')) != 1)
 
@@ -283,7 +284,7 @@ class Blueprint(_PackageBoundObject):
         if should_validate:
             if not self.is_valid_endpoint_rule_combination(rule, endpoint):
                 raise AssertionError('Blueprint endpoint "%s" is invalid or should not contain dots' % (endpoint))
-        
+
         if not is_rule_for_child_blueprints:
             self.rules.add(rule.strip('/'))
         if (not is_rule_for_child_blueprints) and (endpoint is not None):
